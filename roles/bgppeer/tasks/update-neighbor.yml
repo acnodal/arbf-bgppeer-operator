@@ -1,0 +1,22 @@
+- name: neighbor status
+  command: /usr/bin/vtysh -c "show bgp neighbor {{podIP}} json"
+  register: neighbor_status
+  delegate_to: "{{ peeripaddr }}"
+  become: yes
+
+- name: extract JSON from neighbor status
+  set_fact:
+    no_neighbor: "{{ (neighbor_status.stdout | from_json).bgpNoSuchNeighbor | default(False) }}"
+  ignore_errors: yes
+  
+- name: update asbr
+  block:
+  - name: Add BGP Neighbor
+    command: /usr/bin/vtysh -c "config t" -c "router bgp {{ peerasn }}" -c "neighbor {{ item.podIP }} remote-as {{ myasn }}"
+  - name: tag BGP Neighbor
+    command: /usr/bin/vtysh -c "config t" -c "router bgp {{ peerasn }}" -c "neighbor {{ item.podIP }} description metallb"
+  - name: Save Changes
+    command: /usr/bin/vtysh -c "write integrated"
+  when: no_neighbor
+  delegate_to: "{{ peeripaddr }}"
+  become: yes

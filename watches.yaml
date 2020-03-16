@@ -1,0 +1,6 @@
+---
+- version: v1alpha1
+  group: bgppeer.acnodal.com
+  kind: Bgppeer
+  reconcilePeriod: 1m
+  role: /opt/ansible/roles/bgppeer

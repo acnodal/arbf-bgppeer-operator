@@ -1,0 +1,104 @@
+---
+# tasks file for bgppeer
+
+
+# Get router IP from metallb configuration
+
+- name: lookup metalb configmap
+  set_fact: 
+    metallb: "{{ lookup('k8s', api_version='v1', kind='ConfigMap',namespace='metallb-system').data.config }}"
+
+
+# create bgppeers bgp variables
+
+- name: write configmap to file
+  copy:
+    content: "{{ metallb }}"
+    dest: metallb.yml
+
+- name: create simple bgp peers yml file
+  script: 
+    cmd: files/mlbcmpeers.py --input metallb.yml --output bgppeers.yml
+  args:
+    executable: python3
+
+- name: load bgppeers
+  include_vars:
+    file: bgppeers.yml
+
+- name: Add router addr to inventory
+  add_host:
+    name: "{{ peeripaddr }}"
+
+
+# setup ssh key in containers for connection to router(s)
+# key stored in k8s secret and projected as file
+
+- name: check for ssh key
+  stat:
+    path: /opt/ansible/.ssh
+  register: ssh_key_dir
+
+
+- name: setup ssh key for ansible-operator
+  command:  "{{ item }}"
+  with_items:
+    - mkdir /opt/ansible/.ssh
+    - cp /tmp/key/ansible-operator /opt/ansible/.ssh/id_rsa
+    - chmod 0600 /opt/ansible/.ssh/id_rsa
+  when: ssh_key_dir.stat.exists == false
+  args:
+    warn: false
+
+
+- name: lookup pods running speaker
+  set_fact:
+    speakers: "{{ lookup('k8s', api_version='v1', kind='Pod',namespace='metallb-system') | to_json}}"
+  
+- name: write speakers to file
+  copy:
+    content: "{{ speakers }}"
+    dest: speakers.json
+
+- name: extract pods and convert to yml
+  script: 
+    cmd: peerhosts.py --j speakers.json --y peerhosts.yml
+  args:
+    executable: python3
+    
+- name: load vars
+  include_vars:
+    file: peerhosts.yml
+
+- name: lookup configured peers
+  command: /usr/bin/vtysh -c "show bgp summary json"
+  register: rtrpeers
+  delegate_to: "{{ peeripaddr }}"
+  become: yes
+
+- name: write router peers to file
+  copy:
+    content: "{{ rtrpeers.stdout }}"
+    dest: rtrpeers.json
+    
+- name: extract peer state and convert to yml
+  script:
+    cmd: rtrpeers.py --j rtrpeers.json --y rtrpeers.yml
+  args:
+    executable: python3 
+  
+- name: load vars
+  include_vars:
+    file: rtrpeers.yml
+
+- name: loop over vars
+  include: delete-down-peer.yml connections={{ item.connections }} nodeipaddr={{ item.nodeipaddr }} nodeas={{ item.nodeas }}
+  with_items:
+    - "{{ rtrpeerstatus }}"
+  
+- name: updated peers
+  include: update-neighbor.yml podIP={{ item.podIP }}
+  with_items:
+    - "{{ peerhosts }}"
+
+

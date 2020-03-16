@@ -1,0 +1,17 @@
+
+- name: cast myasn to int
+  set_fact:
+    lbasn: "{{ myasn|int }}"
+- name: debug
+  debug:
+    msg: checking "{{ connections }}" compare "{{ lbasn }}" with "{{ nodeas }}"
+
+- name: update asbr
+  block:
+    - name: Delete down BGP Neighbor
+      command: /usr/bin/vtysh -c "config t" -c "router bgp {{ peerasn }}" -c "no neighbor {{ nodeipaddr }} remote-as {{ nodeas }}"
+    - name: Save Changes
+      command: /usr/bin/vtysh -c "write integrated"
+  when:  connections == "0" and lbasn == nodeas
+  delegate_to: "{{ peeripaddr }}"
+  become: yes

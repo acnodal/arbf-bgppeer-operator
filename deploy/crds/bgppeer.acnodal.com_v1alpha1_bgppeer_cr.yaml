@@ -1,0 +1,8 @@
+apiVersion: bgppeer.acnodal.com/v1alpha1
+kind: Bgppeer
+metadata:
+  name: bgppeer
+  namespace: arbf-operators 
+spec:
+  metallb_namespace: metallb-system
+

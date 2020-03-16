@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arbf-bgppeer-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: arbf-bgppeer-operator
+  template:
+    metadata:
+      labels:
+        name: arbf-bgppeer-operator
+    spec:
+      serviceAccountName: arbf-bgppeer-operator
+      containers:
+        - name: ansible
+          command:
+          - /usr/local/bin/ao-logs
+          - /tmp/ansible-operator/runner
+          - stdout
+          # Replace this with the built image name
+          image: "svcs.localdomain/bgppeer-operator:v0.0.1"
+          imagePullPolicy: "Always"
+          volumeMounts:
+          - mountPath: /tmp/ansible-operator/runner
+            name: runner
+            readOnly: true
+          - name: ssh-key
+            mountPath: /tmp/key
+            readOnly: true
+        - name: operator
+          # Replace this with the built image name
+          image: "svcs.localdomain/bgppeer-operator:v0.0.1"
+          imagePullPolicy: "Always"
+          volumeMounts:
+          - mountPath: /tmp/ansible-operator/runner
+            name: runner
+          - name: ssh-key
+            mountPath: /tmp/key
+            readOnly: true
+          env:
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "arbf-bgppeer-operator"
+            - name: ANSIBLE_GATHERING
+              value: explicit
+      volumes:
+        - name: runner
+          emptyDir: {}
+        - name: ssh-key
+          secret:
+            secretName: ansible-operator-ssh
+        
